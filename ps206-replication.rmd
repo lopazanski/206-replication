@@ -1,0 +1,158 @@
+---
+title: "Replication assessment (Due 16 Feb)"
+author: "Prof. Paasha Mahdavi, PS 206, UCSB"
+date: "Winter, 2021"
+output: html_document
+---
+
+### Introduction
+This assignment is a check-in intended to track progress on your final project. Complete it to the best of your ability, based on the difficulty of the model you are replicating and the format of the replication data. For example, if your replication involves a logit model (which we have not yet covered in class) then you can simply conduct the replication using OLS regression at this stage in Question 2. 
+
+Note that this assignment is not graded -- it is just an opportunity to get feedback on the replication portion of your final project. 
+
+
+### Submission Instructions
+Please submit your assessment via Gauchospace. In addition to submitting both the .rmd file and the HTML file, please also submit your replication dataset(s). This assignment is due by 11:55 PM on Tuesday February 16th. 
+
+***
+
+#### Question 1
+
+*Before you get started, please write the full reference for your selected article or book in the space below.*
+Folpp, H.R., Schilling, H.T., Clark, G.F., Lowry, M.B., Maslen, B., Gregson, M., Suthers, I.M., 2020. Artificial reefs increase fish abundance in habitat-limited estuaries. Journal of Applied Ecology 57, 1752–1761. https://doi.org/10.1111/1365-2664.13666
+
+
+a. What table(s) or figure(s) are you planning to replicate from the study?
+Figure 2 illustrating the difference in means for each estuary 
+
+b. Load the replication dataset(s) for your selected study. What are the dimensions of this dataset?
+
+```{r message=FALSE, warning=FALSE}
+############################################
+### Attach Packages & Read Data
+############################################
+library(tidyverse)
+library(janitor)
+library(stargazer)
+library(MASS)
+library(lubridate)
+library(glmmTMB)
+library(emmeans)
+
+folpp <- read_csv("folpp-data-raw.csv") %>% clean_names()
+
+############################################
+### Basic Wrangling
+############################################
+folpp_clean <- folpp %>% 
+  filter(season != "Aut") %>% 
+  mutate(before_after = factor(before_after, levels = c("Before", "After")), # arange before/after factor levels
+         sample_period = as.factor(year),# year indicates before, after 1 year, after 2 years
+         reef_type = as.factor(case_when(habitat == "SD" ~ "AR",
+                                         habitat == "AR" ~ "AR",
+                                         habitat == "NR" ~ "NR")), # rename and convert to factor to match paper wording
+         site = as.factor(paste(location, site2)), # rename to match wording in paper
+         time = mdy(time), # use lubridate to convert to date format
+         estuary = location) # rename to match wording in paper
+
+```
+
+
+**The dimensions are 372x14, meaning there are 372 observations across 14 variables.**
+
+
+c. Plot the density or histogram of the primary dependent variable based on your answer to part (a). How is the variable roughly distributed? What is the median outcome? What is the minimum and maximum? 
+
+```{r}
+hist(folpp_clean$total_abund)
+
+median(folpp_clean$total_abund)
+min(folpp_clean$total_abund)
+max(folpp_clean$total_abund)
+```
+
+**The primary dependent variable (total abundance) is left skewed - this would suggest that a log transformation may be appropriate, however there are also a high number of zeroes that would be lost in the log transformation. The authors ended up choosing a negative binomial distribution to account for this. The values range from 0-256 fish, with the median value of 10 fish.**
+
+```{r}
+# Visualize the log transformation for kicks - it does result in a more normal distribution
+hist(log(folpp_clean$total_abund))
+```
+
+
+d. Are there any missing datapoints in the dependent variable?
+```{r}
+length(folpp_clean$total_abund[is.na(folpp_clean$total_abund)])
+```
+
+**There are no missing values for the total abundance**
+
+e. Plot the density or histogram of the primary independent variable. How is the variable roughly distributed? What is the median outcome? What is the minimum and maximum? 
+
+**One primary independent variable is the sampling period - before, after one year, and after two years. There's consistent sampling of each site across these three intervals, so visualizing the histogram doesn't quite make sense." 
+
+```{r}
+hist(as.numeric(folpp_clean$sample_period))
+```
+
+**The median outcome for the control group is 8 fish, and the median outcome for the impact group (for artificial reef creation) is 14 fish. This includes both before and after data.**
+
+```{r}
+ggplot(data = folpp_clean) + 
+  geom_violin(aes(x = impact_control, y = total_abund)) +
+  geom_point(aes(x = impact_control, y = median(total_abund)))
+
+median_values <- folpp_clean %>% 
+  group_by(impact_control) %>% 
+  summarize(med_abun = median(total_abund))
+
+median_values
+```
+
+
+
+f. Plot a scatterplot of the primary independent variable (X) and primary dependent variable (Y). If applicable, label the points in the scatterplot. 
+
+```{r}
+ggplot(data = folpp_clean) +
+  geom_violin(aes(x = impact_control, y = total_abund, fill = before_after))
+
+```
+
+
+***
+
+#### Question 2
+
+a. Run a bivariate OLS regression of the primary outcome variable on the primary independent variable. Print a summary of the results using the `stargazer()` function.
+
+```{r}
+# Try with mass package
+mass <- glm.nb(total_abund ~ sample_period*reef_type*estuary, 
+              data = folpp_clean,
+              link = log)
+
+summary(mass)
+
+stargazer(mass, type = "text")
+
+# Try with glmmTMB package
+
+```
+
+
+
+Intercepts for site and sampling date - term to allow different intercepts drawn from a distribution; allowing for heterogeneity for site and ampling date. Site specific IV, date specific effects.
+
+
+b. Interpret the results for both the intercept and slope.
+
+WHEEEWW 
+
+c. Graph a residuals-versus-fitted plot for these results. What patterns do you see? 
+
+```{r}
+plot(base)
+```
+
+
+***
