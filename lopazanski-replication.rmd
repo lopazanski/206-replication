@@ -48,9 +48,10 @@ folpp_clean <- folpp %>%
   filter(season != "Aut") %>% 
   mutate(before_after = factor(before_after, levels = c("Before", "After")), # arange before/after factor levels
          sample_period = as.factor(year),# year indicates before, after 1 year, after 2 years
-         reef_type = as.factor(case_when(habitat == "SD" ~ "AR",
-                                         habitat == "AR" ~ "AR",
-                                         habitat == "NR" ~ "NR")), # rename and convert to factor to match paper wording
+         reef_type = factor(case_when(habitat == "SD" ~ "AR",
+                                      habitat == "AR" ~ "AR",
+                                      habitat == "NR" ~ "NR"),
+                            levels = c("NR", "AR")), # rename and convert to factor to match paper wording
          site = as.factor(paste(location, site2)), # rename to match wording in paper
          time = mdy(time), # use lubridate to convert to date format
          estuary = location) # rename to match wording in paper
@@ -88,7 +89,7 @@ length(folpp_clean$total_abund[is.na(folpp_clean$total_abund)])
 
 e. Plot the density or histogram of the primary independent variable. How is the variable roughly distributed? What is the median outcome? What is the minimum and maximum? 
 
-**One primary independent variable is the sampling period - before, after one year, and after two years. There's consistent sampling of each site across these three intervals, so visualizing the histogram doesn't quite make sense." 
+**One primary independent variable is the sampling period - before, after one year, and after two years. There's consistent sampling of each site across these three intervals, so visualizing the histogram doesn't quite make sense.**
 
 ```{r}
 hist(as.numeric(folpp_clean$sample_period))
@@ -135,24 +136,24 @@ summary(mass)
 
 stargazer(mass, type = "text")
 
-# Try with glmmTMB package
-
+# Next steps: run alongside the original code to see how different the results are
+# with using the MASS package and glm.nb versus glmmTMB - only difference should 
+# be from including the random effects of sampling date and location - if they are
+# majorly different, repeat while working through with glmmTMB instead.
 ```
-
-
-
-Intercepts for site and sampling date - term to allow different intercepts drawn from a distribution; allowing for heterogeneity for site and ampling date. Site specific IV, date specific effects.
 
 
 b. Interpret the results for both the intercept and slope.
 
-WHEEEWW 
+**For the research question, we are most interested in the interaction between sampling period and reef type to understand how the abundance of fish changed over time. Holding all other included variables constant, an artificial reef had 1.848 more fish after one year and 1.879 more fish after two years on average compared to a natural reef over the same timeframes. These results are statistically significant (p < 0.01). There were also some differential effects among the three estuaries: after one year, the artificial reefs at St. Georges Basin were associated with 1.773 more fish on average than the Botany Bay artificial reefs after the same amount of time (p < 0.05).**
 
 c. Graph a residuals-versus-fitted plot for these results. What patterns do you see? 
 
 ```{r}
 plot(base)
 ```
+
+**The variance is not quite constant, but does not have consistent skew either - there is a decrease in the size of the residuals where the majority of the data is concentrated.**
 
 
 ***
