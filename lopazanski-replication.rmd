@@ -36,8 +36,6 @@ library(janitor)
 library(stargazer)
 library(MASS)
 library(lubridate)
-library(glmmTMB)
-library(emmeans)
 
 folpp <- read_csv("folpp-data-raw.csv") %>% clean_names()
 
@@ -132,7 +130,7 @@ mass <- glm.nb(total_abund ~ sample_period*reef_type*estuary,
               data = folpp_clean,
               link = log)
 
-summary(mass)
+#summary(mass)
 
 stargazer(mass, type = "text")
 
@@ -150,10 +148,10 @@ b. Interpret the results for both the intercept and slope.
 c. Graph a residuals-versus-fitted plot for these results. What patterns do you see? 
 
 ```{r}
-plot(base)
+plot(mass)
 ```
 
-**The variance is not quite constant, but does not have consistent skew either - there is a decrease in the size of the residuals where the majority of the data is concentrated.**
+**There residuals are not entirely evenly distributed, but there is not a consistent skew either - it seems like the residuals are lower in the area where the most data is distributed... which seems potentially reasonable?**
 
 
 ***
