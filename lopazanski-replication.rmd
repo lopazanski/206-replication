@@ -1,31 +1,21 @@
 ---
-title: "Replication assessment (Due 16 Feb)"
-author: "Prof. Paasha Mahdavi, PS 206, UCSB"
+title: "Replication"
+author: "Cori Lopazanski"
 date: "Winter, 2021"
 output: html_document
 ---
 
 ### Introduction
-This assignment is a check-in intended to track progress on your final project. Complete it to the best of your ability, based on the difficulty of the model you are replicating and the format of the replication data. For example, if your replication involves a logit model (which we have not yet covered in class) then you can simply conduct the replication using OLS regression at this stage in Question 2. 
 
-Note that this assignment is not graded -- it is just an opportunity to get feedback on the replication portion of your final project. 
+This document works through replicating the data analysis conducted in Folpp et al. 2020: 
 
+Folpp, H.R., Schilling, H.T., Clark, G.F., Lowry, M.B., Maslen, B., Gregson, M., Suthers, I.M., 2020. Artificial reefs increase fish abundance in habitat-limited estuaries. Journal of Applied Ecology 57, 1752–1761. https://doi.org/10.1111/1365-2664.13666
 
-### Submission Instructions
-Please submit your assessment via Gauchospace. In addition to submitting both the .rmd file and the HTML file, please also submit your replication dataset(s). This assignment is due by 11:55 PM on Tuesday February 16th. 
+I plan to replicate Figure 2, which illustrates the difference in means for each estuary.
 
 ***
 
-#### Question 1
-
-*Before you get started, please write the full reference for your selected article or book in the space below.*
-Folpp, H.R., Schilling, H.T., Clark, G.F., Lowry, M.B., Maslen, B., Gregson, M., Suthers, I.M., 2020. Artificial reefs increase fish abundance in habitat-limited estuaries. Journal of Applied Ecology 57, 1752–1761. https://doi.org/10.1111/1365-2664.13666
-
-
-a. What table(s) or figure(s) are you planning to replicate from the study?
-Figure 2 illustrating the difference in means for each estuary 
-
-b. Load the replication dataset(s) for your selected study. What are the dimensions of this dataset?
+#### Set Up and Wrangling
 
 ```{r message=FALSE, warning=FALSE}
 ############################################
@@ -35,7 +25,10 @@ library(tidyverse)
 library(janitor)
 library(stargazer)
 library(MASS)
+library(car)
 library(lubridate)
+library(emmeans)
+library(glmmTMB)
 
 folpp <- read_csv("folpp-data-raw.csv") %>% clean_names()
 
@@ -45,61 +38,65 @@ folpp <- read_csv("folpp-data-raw.csv") %>% clean_names()
 folpp_clean <- folpp %>% 
   filter(season != "Aut") %>% 
   mutate(before_after = factor(before_after, levels = c("Before", "After")), # arange before/after factor levels
-         sample_period = as.factor(year),# year indicates before, after 1 year, after 2 years
-         reef_type = factor(case_when(habitat == "SD" ~ "AR",
-                                      habitat == "AR" ~ "AR",
-                                      habitat == "NR" ~ "NR"),
-                            levels = c("NR", "AR")), # rename and convert to factor to match paper wording
+         sample_period = factor(case_when(year == 1 ~ "Before",
+                                             year == 2 ~ "After 1",
+                                             year == 3 ~ "After 2"),
+                                levels = c("Before", "After 1", "After 2")),
+         reef_type = factor(case_when(habitat == "SD" ~ "AR", # sand habitat eventually became artificial reef
+                                      habitat == "AR" ~ "AR", # artificial reef
+                                      habitat == "NR" ~ "NR"), # natural reef
+                            levels = c("AR", "NR")), # rename and convert to factor to match paper wording
          site = as.factor(paste(location, site2)), # rename to match wording in paper
-         time = mdy(time), # use lubridate to convert to date format
+         time2 = mdy(time), # use lubridate to convert to date format
          estuary = location) # rename to match wording in paper
 
 ```
 
+#### Initial Visualizations
 
-**The dimensions are 372x14, meaning there are 372 observations across 14 variables.**
-
-
-c. Plot the density or histogram of the primary dependent variable based on your answer to part (a). How is the variable roughly distributed? What is the median outcome? What is the minimum and maximum? 
+The primary dependent variable (total abundance) is *right* skewed - this would suggest that a log transformation may be appropriate, however there are also a high number of zeroes that would be lost in the log transformation. The authors ended up choosing a negative binomial distribution to account for this. The values range from 0-256 fish, with the median value of 10 fish.
 
 ```{r}
+############################################
+#### Histogram of Total Abundance
+############################################
 hist(folpp_clean$total_abund)
 
-median(folpp_clean$total_abund)
-min(folpp_clean$total_abund)
-max(folpp_clean$total_abund)
+############################################
+#### Summary Values
+############################################
+summary(folpp_clean$total_abund)
 ```
 
-**The primary dependent variable (total abundance) is left skewed - this would suggest that a log transformation may be appropriate, however there are also a high number of zeroes that would be lost in the log transformation. The authors ended up choosing a negative binomial distribution to account for this. The values range from 0-256 fish, with the median value of 10 fish.**
+One option would be to use a log transformation (or log + 1 because of the excess zeroes) - this does result in a more normal distribution, as expected:
 
 ```{r}
-# Visualize the log transformation for kicks - it does result in a more normal distribution
+############################################
+### Log-transformed Abundance
+############################################
 hist(log(folpp_clean$total_abund))
+
+############################################
+### Log+1 Transformed Abundance
+############################################
+hist(log(folpp_clean$total_abund +1))
 ```
 
+There are no missing values in the dataset: 
 
-d. Are there any missing datapoints in the dependent variable?
 ```{r}
 length(folpp_clean$total_abund[is.na(folpp_clean$total_abund)])
 ```
 
-**There are no missing values for the total abundance**
-
-e. Plot the density or histogram of the primary independent variable. How is the variable roughly distributed? What is the median outcome? What is the minimum and maximum? 
-
-**One primary independent variable is the sampling period - before, after one year, and after two years. There's consistent sampling of each site across these three intervals, so visualizing the histogram doesn't quite make sense.**
+The sampling period is the primary independent variable - before, after one year, and after two years. The histogram indicates there was consistent sampling across the three intervals: 
 
 ```{r}
 hist(as.numeric(folpp_clean$sample_period))
 ```
 
-**The median outcome for the control group is 8 fish, and the median outcome for the impact group (for artificial reef creation) is 14 fish. This includes both before and after data.**
+The median outcome for the control group is 5 fish, and the median outcome for the impact group (for artificial reef creation) is 13 fish. This includes both before and after data:
 
 ```{r}
-ggplot(data = folpp_clean) + 
-  geom_violin(aes(x = impact_control, y = total_abund)) +
-  geom_point(aes(x = impact_control, y = median(total_abund)))
-
 median_values <- folpp_clean %>% 
   group_by(impact_control) %>% 
   summarize(med_abun = median(total_abund))
@@ -107,51 +104,209 @@ median_values <- folpp_clean %>%
 median_values
 ```
 
-
-
-f. Plot a scatterplot of the primary independent variable (X) and primary dependent variable (Y). If applicable, label the points in the scatterplot. 
+Alternatively, we can use a violin plot to examine the distribution of the control/impact groups. Here, the point indicates the median abundance:
 
 ```{r}
-ggplot(data = folpp_clean) +
-  geom_violin(aes(x = impact_control, y = total_abund, fill = before_after))
+#####################################################
+### Violin: Just Control/Impact
+#####################################################
+ggplot(data = folpp_clean) + 
+  geom_violin(aes(x = impact_control, y = total_abund)) +
+  geom_point(aes(x = impact_control, y = median(total_abund)))
 
 ```
 
+Can also separate out the plot further to show the difference before and after:
+
+```{r}
+#####################################################
+### Violin: Control/Impact + Before/After
+#####################################################
+ggplot(data = folpp_clean) +
+  geom_violin(aes(x = impact_control, y = total_abund, 
+                  fill = before_after))
+
+```
 
 ***
 
-#### Question 2
+#### Model Replication
+##### First - using glm.nb
 
-a. Run a bivariate OLS regression of the primary outcome variable on the primary independent variable. Print a summary of the results using the `stargazer()` function.
+The paper used the glmmTMB package to be able to include the random effects of sampling date and location. Since I'm less familiar with that method, I will first explore using `MASS::glm.nb` with a log link as they did in their analysis. 
 
 ```{r}
-# Try with mass package
-mass <- glm.nb(total_abund ~ sample_period*reef_type*estuary, 
+###################################################
+### Regression with MASS Package - glm.nb
+###################################################
+mass <- glm.nb(total_abund ~ estuary*sample_period*reef_type, 
               data = folpp_clean,
               link = log)
 
-#summary(mass)
-
 stargazer(mass, type = "text")
 
-# Next steps: run alongside the original code to see how different the results are
-# with using the MASS package and glm.nb versus glmmTMB - only difference should 
-# be from including the random effects of sampling date and location - if they are
-# majorly different, repeat while working through with glmmTMB instead.
+
+# Use anova to compare results with those reported in the paper
+Anova(mass, type = "II")
+
 ```
 
+These results are a bit different compared to what the authors got with glmmTMB, but the significance levels are somewhat similar? The strongest effects are the estuary/location, sampling period/after1-2, and the interaction between the sampling period/after 1-2 and reef type/habitat. However, the glm.nb model also showed a significant effect for the interaction between the estuary/location and the reef type/habitat.
 
-b. Interpret the results for both the intercept and slope.
+For comparison, this is the result from the glmmTMB:
 
-**For the research question, we are most interested in the interaction between sampling period and reef type to understand how the abundance of fish changed over time. Holding all other included variables constant, an artificial reef had 1.848 more fish after one year and 1.879 more fish after two years on average compared to a natural reef over the same timeframes. These results are statistically significant (p < 0.01). There were also some differential effects among the three estuaries: after one year, the artificial reefs at St. Georges Basin were associated with 1.773 more fish on average than the Botany Bay artificial reefs after the same amount of time (p < 0.05).**
+\begin{array}{lrcrl}
+  & \text{Chisq} & \text{Df} & Pr(>Chisq) &  \\
+\text{Location}                     & 22.2785 & 2  & 1.453e-05 & *** \\
+\text{After.1...2}                  & 63.2023 & 2  & 1.887e-14 &*** \\
+\text{Habitat}                      & 0.6020  & 1  & 0.43781   & \\
+\text{Location:After.1...2}         & 7.8458  & 4  & 0.09739   & . \\
+\text{Location:Habitat}             & 5.2276  & 2  & 0.07326   & . \\
+\text{After.1...2:Habitat}          & 93.4440 & 2  & < 2.2e-16 & *** \\
+\text{Location:After.1...2:Habitat} & 3.2304  & 4  & 0.52004   &
+\end{array}
 
-c. Graph a residuals-versus-fitted plot for these results. What patterns do you see? 
+##### Interpretation
+
+For the research question, we are most interested in the interaction between sampling period and reef type to understand how the abundance of fish changed over time. Holding all other included variables constant, an artificial reef had 1.848 more fish after one year and 1.879 more fish after two years on average compared to a natural reef over the same timeframes. These results are statistically significant (p < 0.01). There were also some differential effects among the three estuaries: after one year, the artificial reefs at St. Georges Basin were associated with 1.773 more fish on average than the Botany Bay artificial reefs after the same amount of time (p < 0.05).
+
+// PM: Interpreting the interaction terms in the regression table is tricky here because of the triple interaction. What the 1.848 coefficient is telling us is actually quite specific: it is the difference in means for just the Botany Bay group since this is the omitted category (akin to estuary = 0). So it would be: “Holding all other included variables constant, an artificial reef had 1.848 more fish after one year and 1.879 more fish after two years on average compared to a natural reef over the same timeframes in Botany Bay alone.” This is why the graphics will be so useful, because there are 18 different estimates of interest here: 6 each for Botany Bay, Lake Macquarie, and St Georges Basin. //
+
+##### Examine Residuals
 
 ```{r}
 plot(mass)
 ```
 
-**There residuals are not entirely evenly distributed, but there is not a consistent skew either - it seems like the residuals are lower in the area where the most data is distributed... which seems potentially reasonable?**
+There residuals are not entirely evenly distributed, but there is not a consistent skew either - it seems like the residuals are lower in the area where the most data is distributed... which seems potentially reasonable?
 
+PM: The residuals-vs-fitted plots are reasonable, though there is some heteroskedasticity given that there is slightly greater variance at higher predicted values than at lower predicted values (very much like the typical “funnel” shape of heteroskedastic residuals).
+
+
+##### Pairwise Comparisons
+
+```{r}
+######################################################
+## Pairwise comparisons for MASS::glm.nb 
+######################################################
+# Using emmeans package - compare the means for each sample period (before, after 1, after 2) within 
+# reef type (control vs impact) within each estuary 
+emm_mass <- emmeans(mass, 
+               specs = pairwise ~ sample_period|reef_type|estuary,
+               type = "response") # convert back to original scale
+emm_mass$emmeans
+
+```
+
+Results shown here are somewhat different from the Table S2, suggesting that it may be good to work through using the glmmTMB instead. 
+
+PM: The difference in results is not as large as I'd expected when using the glm.nb. But any differences you're getting are coming from the random effects. It seems like adding in site random intercepts (as they do) would soak up the reef type fixed coefficient chi-squared estimate in the ANOVA. 
 
 ***
+
+##### Second - using glmmTMB 
+
+```{r}
+######################################################
+## Using glmmTMB::glmmTMB 
+######################################################
+tmb <- glmmTMB(total_abund ~ estuary*sample_period*reef_type + (1|site) + (1|time),
+               family = nbinom2, 
+               data = folpp_clean)
+
+
+######################################################
+## Pairwise comparisons for glmmTMB
+######################################################
+emm_tmb <- emmeans(tmb,
+                   specs = pairwise ~ sample_period|reef_type|estuary,
+                   type = "response") # convert back to original scale
+
+tmb_emm <- emm_tmb$emmeans
+```
+
+
+#### Recreating Figure 2
+
+```{r}
+tmb_df <- data.frame(tmb_emm) %>% 
+  mutate(estuary = factor(estuary,
+                          levels = c("Lake Macquarie", "St Georges Basin", "Botany Bay")))
+
+ggplot(data = tmb_df) +
+  geom_point(aes(x = sample_period, y = response, pch = reef_type)) +
+  geom_line(aes(x = sample_period, y = response, group = reef_type, linetype = reef_type)) +
+  geom_errorbar(aes(x = sample_period,
+                    ymin = response-SE,
+                    ymax = response+SE,
+                    pch = reef_type,
+                    linetype = reef_type),
+                width = 0.1, size = 0.5) +
+  facet_wrap(~estuary) +
+  labs(
+    x = NULL,
+    y = "mean total abundance"
+  )
+
+```
+
+
+#### Recreating Table S2 Including Both Models
+
+
+
+#### Notes for Final Write-Up
+
+1. First being by describing the data used in this paper. Include in your discussion the pri- mary data sources used (including population represented, time frame, type of sample); and the key variables of interest for the current paper (including the key dependent and independent variables, how they are defined or created; whether measurement error is a concern, and whether missing data is a concern).
+
+
+2. Reproduce the main findings and present them in tabular format. You can also present them in graphical format in addition to the table.Interpret the results in your own words.
+
+3. Discuss the validity of these findings. Identify any concerns that could lead to bias or inconsistency in the results. These could arise from how the data are collected, how the model is specified, and/or how the research is designed. In terms of inference, can you ascribe a causal relationship from these findings? Why, or why not?
+
+a) Are there any aspects of the model you are replicating that seem problematic to you, based on the concerns we've covered so far in class? Do the authors attempt to address any of these concerns?
+
+The authors do not spend much time addressing the model in the paper. There is not anything that seems immediately problematic from looking through what I have done so far. I am still working through understanding what is happening mathematically when using these types of models. 
+
+PM: There's a slightly heteroskedastic pattern in the residuals plot, with the classic funnel shape showing up here: smaller variance at low fitted values and larger variance at high fitted values. It's worth noting though that there are very few low fitted values, so this is to be expected (given that variance is a function of sample size). 
+
+4. Extension
+
+I am considering looking in more detail at comparing the two models to try to understand what is accomplished by including sampling site and date as random effects, and why that was necessary when it seems like the results were decently similar without those additional changes. 
+
+PM: It might be best for your project to not focus on critiquing the modeling strategy, since it's not something we covered in the course in detail, though it's on the slides for this week. Instead, better to focus on their research design. Are there any weaknesses with how they have set up the research? Are they able to infer a causal effect of reef type on fish abundance? Why or why not? The extension sounds interesting from a theoretical standpoint; that is, what is the theoretical connection between the variation in site- and time-specific effects and the variables of interest? 
+
+
+### Questions for Office Hours:
+
+1. Make sure I'm understanding the emmmeans results correctly - this gives me the marginal means, meaning that the "response" is the mean of that factor while all other variables are at their respective mean? But does that also mean that they are at their adjusted mean *for those other variables* or just the plain mean from the descriptive statistics? 
+2. Difference between using | and : in emmeans
+: would do all levels of all factors compared to each other
+| only does the factors within those levels
+
+
+///
+Anova table is different - that's probably what's getting picked up in the site random effect; same with the estuary:reef type coefficeint
+
+Site random effect - extra information
+
+Why include a random effect instead of fixed effect - asserting that the different sites have different "starting points" ("on average" they have different levels of abundance) - instead of estimating n-1 coefficients, let's focus on one which tells us about the distribution of those coefficients...
+
+Assuming the distribution of the coefficients is normal (centered at some system-wide intercept and then given that constant, have a norm-dist random intercept 0 + value) - accounting for the different starting points at different sites but do it in one parameter
+
+Fixed effects wouldn't assume any sort of distribution in the coefficients
+Ex: chi square of 80 vs 22 for location 
+
+Main difference is the estuary:reef_type ... they are not quite as sure; could be that I'm over-estimating 'more" than the others for how big the differences in the estuaries are. Worth noting and guessing but to him is not the big enough difference to necessitate a larger critique
+
+Critiquing the research design and ability to make any inference. Random assignment of reef type = no. Random assigned data collection time (sample_period), could be some selection bias in where the reef types were located. 
+
+Important things to note when it comes to the research design "discuss validity of findings"
+
+- Talk about the differences in the model specification
+- Issue about location and randomization concerns, vailidty of controls
+- The interdependence: assume that the reefs are independent, if the design is not sufficiently accounting for system-wide independence
+
+Questions of internal and external validity - here are some potential solutions "here's what I would do if I had the infinite time and money
+
+Block randomization?
