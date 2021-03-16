@@ -139,6 +139,10 @@ The paper used the glmmTMB package to be able to include the random effects of s
 ###################################################
 ### Regression with MASS Package - glm.nb
 ###################################################
+## The paper used the glmmTMB package to be able to include the random effects of 
+## sampling date and location. Since I'm less familiar with that method, I will 
+## first explore using `MASS::glm.nb` with a log link as they did in their analysis. 
+
 mass <- glm.nb(total_abund ~ estuary*sample_period*reef_type, 
               data = folpp_clean,
               link = log)
@@ -222,7 +226,12 @@ emm_tmb <- emmeans(tmb,
                    specs = pairwise ~ sample_period|reef_type|estuary,
                    type = "response") # convert back to original scale
 
-tmb_emm <- emm_tmb$emmeans
+emm_tmb2 <- emmeans(tmb,
+                   specs = pairwise ~ sample_period:reef_type:estuary,
+                   type = "response") # convert back to original scale
+
+means_tmb <- emm_tmb$emmeans
+means_tmb2 <- emm_tmb2$emmeans
 ```
 
 
@@ -234,6 +243,27 @@ tmb_df <- data.frame(tmb_emm) %>%
                           levels = c("Lake Macquarie", "St Georges Basin", "Botany Bay")))
 
 ggplot(data = tmb_df) +
+  geom_point(aes(x = sample_period, y = response, pch = reef_type)) +
+  geom_line(aes(x = sample_period, y = response, group = reef_type, linetype = reef_type)) +
+  geom_errorbar(aes(x = sample_period,
+                    ymin = response-SE,
+                    ymax = response+SE,
+                    pch = reef_type,
+                    linetype = reef_type),
+                width = 0.1, size = 0.5) +
+  facet_wrap(~estuary) +
+  labs(
+    x = NULL,
+    y = "mean total abundance"
+  )
+
+# Using the other method:
+tmb_df2 <- data.frame(folpp_clean) %>% 
+  mutate(estuary = factor(estuary,
+                          levels = c("Lake Macquarie", "St Georges Basin", "Botany Bay")))
+
+
+ggplot(data = tmb_df2) +
   geom_point(aes(x = sample_period, y = response, pch = reef_type)) +
   geom_line(aes(x = sample_period, y = response, group = reef_type, linetype = reef_type)) +
   geom_errorbar(aes(x = sample_period,

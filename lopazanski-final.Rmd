@@ -2,15 +2,18 @@
 title: "POLS 206 Final Project"
 author: "Cori Lopazanski"
 date: "Due 3/17/2021"
-output: html_document
+output: 
+  html_document:
+    fig_cap: yes
+    keep_text: yes
 ---
 
 ```{r setup and basic wrangling, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE,	warning = FALSE)
 
-############################################
+########################################################################
 ### Attach Packages & Read Data
-############################################
+########################################################################
 library(tidyverse)
 library(janitor)
 library(stargazer)
@@ -19,12 +22,14 @@ library(car)
 library(lubridate)
 library(emmeans)
 library(glmmTMB)
+library(kableExtra)
+library(sjPlot)
 
 folpp <- read_csv("folpp-data-raw.csv") %>% clean_names()
 
-############################################
+########################################################################
 ### Basic Wrangling
-############################################
+########################################################################
 folpp_clean <- folpp %>% 
   filter(season != "Aut") %>% 
   mutate(before_after = factor(before_after, levels = c("Before", "After")), # arange before/after factor levels
@@ -40,16 +45,261 @@ folpp_clean <- folpp %>%
          time2 = mdy(time), # use lubridate to convert to date format
          estuary = location) # rename to match wording in paper
 
+########################################################################
+### Replicating Regressions: 1) MASS::glm.nb and 2) glmmTMB::glmmTMBR
+########################################################################
+# 1. MASS:glm.nb is simpler but does not allow random effects
+mass <- glm.nb(total_abund ~ estuary*sample_period*reef_type, 
+              data = folpp_clean,
+              link = log)
+
+# 2. glmmTMB::glmmTMB was used in the article; allows random effects
+tmb <- glmmTMB(total_abund ~ estuary*sample_period*reef_type + (1|site) + (1|time),
+               family = nbinom2, 
+               data = folpp_clean)
 ```
 
 ### Methods
 
-This project replicates the data analysis conducted in Folpp et al. 2020, which examines changes in fish abundance in three habitat-limited estuaries after adding artificial reef structures. Sampling was conducted at six artificial reef sites and three natural control sites in each estuary over three years: before the artificial reefs were deployed, one year post-deployment, and two years post-deployment. Each site was sampled six times within the same three-month period. Fish abundance was measured by quantifying the maximum number of each species observed simultaneously (MaxN) during 30-minute baited remote underwater videos (BRUV).
+This project replicates the data analysis conducted in Folpp et al. 2020, which examines changes in fish abundance in three habitat-limited estuaries following the addition of artificial reef structures. The experiment addresses a key question in fisheries ecology and natural resource management: whether installing artificial reefs contributes to higher fish production, or merely attracts fish from other nearby habitats. 
 
-Folpp et al. 2020 notes that three artificial reef sites in each estuary were not sampled before artificial reef deployment because of uncertainty in deployment locations, and two of the six artificial reef sites in Botany Bay were excluded from the study due to high levels of sedimentation after deployment. 
+Sampling was conducted at six artificial reef sites and three natural control sites in each estuary over three years: before the artificial reefs were deployed, one year post-deployment, and two years post-deployment. Each site was sampled six times within the same three-month period during each year. Fish abundance was measured by quantifying the maximum number of each species observed simultaneously (MaxN) during 30-minute baited remote underwater videos (BRUV).
+
+Folpp et al. 2020 notes that three artificial reef sites in each estuary were not sampled before artificial reef deployment because of uncertainty in deployment locations, and two of the six artificial reef sites in Botany Bay were excluded from the study due to high levels of sedimentation after deployment. Individual BRUV samples were excluded if visibility was less than 1m, estimated by the 1-meter distance to the bait arm. 
+
+
+#### ***Model Estimation***
+
+To examine the effect of artificial reef deployment on total fish abundance, a negative binomial generalized linear model was used with a log link to account for overdispersion. The model includes the indiviual and interactive effects between the estuary (Botany Bay, Lake Macquarie, St. Georges Basin), sampling period (before, one year post-deployment, two years post-deployment), and reef type (artificial reef or natural control reef):
+
+**Model with fixed effects only:**
+
+$$
+\begin{array}{lcl}
+log(\text{Total Abundance}) & = \; \beta_0 + \beta_1\text{Reef Type} +\beta_2\text{Estuary} + \beta_3\text{Sampling Period} + \beta_4(\text{Reef Type}\cdot\text{Estuary}) \,+ \\
+ & \beta_5(\text{Reef Type}\cdot\text{Sampling Period}) + \beta_6(\text{Estuary}\cdot\text{Sampling Period}) \,+ \\
+ & \beta_7(\text{Reef Type}\cdot\text{Estuary}\cdot\text{Sampling Period})
+\end{array}
+$$ 
+
+The model was fit using `R` (v3.6.3) and `RStudio` (v1.2.5033) with the `MASS` pacakge. This model is different from the one used in Folpp et al. 2020, which also included the date of sampling and individual site as random effects (using `glmmTMB` package):
+
+**Model with fixed effects and random effects**
+
+$$
+\begin{array}{lcl}
+log(\text{Total Abundance}) & = \; \beta_0 + \beta_1\text{Reef Type} +\beta_2\text{Estuary} + \beta_3\text{Sampling Period} + \beta_4(\text{Reef Type}\cdot\text{Estuary}) \,+ \\
+ & \beta_5(\text{Reef Type}\cdot\text{Sampling Period}) + \beta_6(\text{Estuary}\cdot\text{Sampling Period}) \,+ \\
+ & \beta_7(\text{Reef Type}\cdot\text{Estuary}\cdot\text{Sampling Period}) + \alpha_1{\text{Date}} + \alpha_2{\text{Site}}
+\end{array}
+$$ 
+
+Above, \alpha coefficients refer to random effects, and \beta coefficients indicate fixed effects.
+For both models, overall interaction effects were tested with Type II ANOVAs (`car` package) and pairwise differences were compared using the `emmeans` package. 
+
+
+### Results
+
+```{r 'figure 1', echo=FALSE, out.cap = "hi", out.width = "65%", out.extra='style="float:right; padding:10px"'}
+######################################################################
+### Summarize raw data to calculate mean and standard error for figure
+######################################################################
+raw_means_df <- folpp_clean %>% 
+  group_by(estuary, sample_period, reef_type) %>% 
+  summarize(
+    mean_maxn = mean(total_abund, na.rm = TRUE),
+    SD = sd(total_abund), 
+    n = n(), 
+    SE = SD/sqrt(n)) %>% 
+  mutate(estuary = factor(estuary,
+                          levels = c("Lake Macquarie", "St Georges Basin", "Botany Bay"))) %>% 
+  mutate(reef_type = case_when(reef_type == "AR" ~ "Artificial Reef",
+                               reef_type == "NR" ~ "Natural Reef"))
+
+######################################################################
+### Figure 1. Raw Data Mean Total Abundance
+######################################################################
+ggplot(data = raw_means_df) +
+  geom_point(aes(x = sample_period, y = mean_maxn, pch = reef_type), size = 2) +
+  geom_line(aes(x = sample_period, y = mean_maxn, group = reef_type, linetype = reef_type)) +
+  geom_errorbar(aes(x = sample_period, ymin = mean_maxn-SE, ymax = mean_maxn+SE,
+                    pch = reef_type, linetype = reef_type), width = 0.18, size = 0.5) +
+  scale_y_continuous(limits = c(0, 74), expand = c(0, 0)) +
+  facet_wrap(~estuary) +
+  labs(x = "Sampling Period", 
+       linetype = "Habitat", 
+       pch = "Habitat", 
+       y = "Mean Total Abundance \n (mean MaxN ±1 SE)",
+       caption = str_wrap("Figure 1. Mean relative total abundance (mean MaxN) on artificial reefs (circles with solid lines) and natural reefs (triangles with dashed lines) in each estuary before artificial reef deployment, one year post-deployment, and two years post-deployment. Error bars indicate ±1 SE.", 85)) +
+  theme_classic() +
+  theme(panel.background = element_rect(colour = "black"), 
+        axis.title.x = element_text(size = 12, margin = margin(10, 0, 0, 0)),
+        axis.title.y = element_text(size = 12, margin = margin(0, 10, 0, 0)),
+        axis.text = element_text(size = 10),
+        strip.text = element_text(size = 11),
+        legend.position = c(0.1, 0.75),
+        plot.caption = element_text(hjust = 0, size = 12, margin = margin(20, 0, 0, 0)))
+
+```
+
+The main hypothesis was that if artificial reefs were supporting enhanced fish production rather than attracting fish from nearby natural reefs, the abundances of fish on artificial reefs should increase and the abundances of fish on natural reefs should not decrease. 
+
+Pairwise differences from both models indicate support for this hypothesis, showing an increase in total abundance on artifical reefs after the reefs were deployed, and no statistically significant changes in total abundances at the natural reefs in all three estuaries (Table 1).  However, the estimated mean total abundance on natural reefs showed a slight decrease in Botany Bay from before the artificial reefs were constructed to one year post-deployment when accounting for random effects of sampling time and site (Table 1, Figure 2). 
+
+
+This trend is also reflected in the descriptive mean total abundance (Figure 1). 
+
+
+```{r echo=FALSE}
+##############################################
+## Pairwise Comparisons using emmeans
+##############################################
+# Using emmeans package to compare the means for each sample period 
+# (before, after 1, after 2) within each reef type (control vs impact) 
+# within each estuary (using "|" instead of all possible comparisons with ":")
+
+### 1. Comparisons without random effects
+emm_mass <- emmeans(mass, 
+               specs = pairwise ~ sample_period|reef_type|estuary,
+               type = "response") # convert back to original scale
+
+
+means_mass <- as.data.frame(emm_mass$emmeans) %>% 
+  dplyr::select(-(df:asymp.UCL))
+
+
+### 2. Comparisons including random effects
+emm_tmb <- emmeans(tmb,
+                   specs = pairwise ~ sample_period|reef_type|estuary,
+                   type = "response") # convert back to original scale
+
+means_tmb <- as.data.frame(emm_tmb$emmeans) %>% 
+  dplyr::select(-(df:upper.CL))
+
+
+####################################################
+### Table Showing Pairwise Differences for Both Models
+####################################################
+means_comparison <- full_join(means_mass, means_tmb, by = c("estuary", "reef_type", "sample_period")) %>% 
+  dplyr::select(reef_type, sample_period, response.x, SE.x, response.y, SE.y) %>% 
+  mutate(reef_type = case_when(reef_type == "AR" ~ "Artificial Reef",
+                               reef_type == "NR" ~ "Natural Reef")) %>% 
+  mutate_if(is.numeric, format, digits = 3)
+
+colnames(means_comparison) <- c(" ", "Sample Period",
+                                "Mean MaxN", "SE", "Mean MaxN", "SE")
+
+
+kable(means_comparison,
+      caption = "<strong>Table 1.</strong> Esimated marginal mean total abundances (mean total MaxN) and standard errors (SE) for each sampling period, within each reef type, within each estuary. Means were calculated using the `emmmeans` package from each negative binomial generalized linear model: one with fixed effects only (using `MASS::glm.nb`), and one including both fixed effects and random effects of sampling date and site (using `glmmTMB::glmmTMB`).") %>% 
+  kable_classic("hover", html_font = "Arial") %>% 
+  add_header_above(c(" " = 2, 
+                     "Total Abundance \n (Fixed Effects Only)" = 2, 
+                     "Total Abundance \n (Random Effects Included)" = 2)) %>% 
+  pack_rows("Botany Bay", 1, 6) %>% 
+  pack_rows("Lake Macquarie", 7, 12) %>% 
+  pack_rows("St Georges Basin", 13, 18)
+
+```
+
+
+### Discussion
+
+
+Discuss the validity of these findings. Identify any concerns that could lead to bias or inconsistency in the results. These could arise from how the data are collected, how the model is specified, and/or how the research is designed. In terms of inference, can you ascribe a causal relationship from these findings? Why, or why not?
+
+
+
 
 
 
 ### References
 
 Folpp, H.R., Schilling, H.T., Clark, G.F., Lowry, M.B., Maslen, B., Gregson, M., Suthers, I.M., 2020. Artificial reefs increase fish abundance in habitat-limited estuaries. Journal of Applied Ecology 57, 1752–1761. https://doi.org/10.1111/1365-2664.13666
+
+
+### Appendix
+
+#### Table 1. Regression Results
+```{r table 2 regression results, echo=FALSE}
+##################################################
+### Output Appendix Table 1: Regression Results 
+###################################################
+tab_model(mass, tmb,
+          show.ci = FALSE,
+          digits = 3, 
+          dv.labels = c("Total Abundance (Fixed Effects Only)", "Total Abundance (with Random Effects)"),
+          wrap.labels = 75,
+          p.style = "numeric_stars",
+          show.aic = TRUE,
+          CSS = list(css.table = 'border:2px solid black;',
+                     css.centeralign = 'text-align: left;'))
+
+```
+
+
+Coefficient Interpretation: These results indicate that holding all other included variables constant, an artificial reef had 1.848 more fish after one year and 1.879 more fish after two years on average compared to a natural reef over the same timeframes in Botany Bay alone. These results are statistically significant (p < 0.01). 
+
+
+#### **Table 2.** ANOVA Results
+
+```{r echo=FALSE}
+##################################################
+### Anova to compare overall interaction effects for both models
+###################################################
+an_mass <- Anova(mass, type = "II")
+an_tmb <- Anova(tmb, type = "II") 
+
+
+kbl(an_mass, 
+    format = "html", 
+    digits = 3,
+    caption = "ANOVA Results (Fixed Effects Only)") %>% 
+  kable_styling("hover",
+                full_width = F, 
+                position = "float_left")
+
+kable(an_tmb, 
+      digits = 3, 
+      caption = "ANOVA Results (Fixed + Random Effects)") %>% 
+  kable_styling("hover",
+                full_width = F,
+                position = "left")
+
+```
+
+
+
+
+```{r echo=FALSE}
+##################################################
+### Replication of Figure using the estimated marginal means (instead of raw data)
+###################################################
+# Create dataframe from the mean response output
+means_tmb_df <- data.frame(means_tmb) %>% 
+  mutate(estuary = factor(estuary,
+                          levels = c("Lake Macquarie", "St Georges Basin", "Botany Bay"))) %>% 
+  mutate(reef_type = case_when(reef_type == "AR" ~ "Artificial Reef",
+                               reef_type == "NR" ~ "Natural Reef"))
+
+ggplot(data = means_tmb_df) +
+  geom_point(aes(x = sample_period, y = response, pch = reef_type)) +
+  geom_line(aes(x = sample_period, y = response, group = reef_type, linetype = reef_type)) +
+  geom_errorbar(aes(x = sample_period,
+                    ymin = response-SE,
+                    ymax = response+SE,
+                    pch = reef_type,
+                    linetype = reef_type),
+                width = 0.2, size = 0.5) +
+  facet_wrap(~estuary) +
+  scale_y_continuous(limits = c(0, 65), expand = c(0, 0)) +
+  labs(x = "Sampling Period", 
+       linetype = "Habitat", 
+       pch = "Habitat", 
+       y = "mean total abundance (mean MaxN ±1 SE)") +
+  theme_classic() +
+  theme(panel.background = element_rect(colour = "black"),
+        legend.position = c(0.1, 0.85)) 
+```
+
+**Figure 2.** Estimated marginal mean total abundance using the MASS::glm.nb model (excluding random effects). Artificial reefs are shown as circles with solid lines, and natural reefs are shown as triangles with dashed lines. Intervals refer to before the artificial reefs were constructed, one year post-deployment, and two years post-deployment. Error bars indicate $\pm 1 SE$.
