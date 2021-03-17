@@ -46,7 +46,7 @@ folpp_clean <- folpp %>%
          estuary = location) # rename to match wording in paper
 
 ########################################################################
-### Replicating Regressions: 1) MASS::glm.nb and 2) glmmTMB::glmmTMBR
+### Regressions: 1) MASS::glm.nb and 2) glmmTMB::glmmTMBR
 ########################################################################
 # 1. MASS:glm.nb is simpler but does not allow random effects
 mass <- glm.nb(total_abund ~ estuary*sample_period*reef_type, 
@@ -57,6 +57,14 @@ mass <- glm.nb(total_abund ~ estuary*sample_period*reef_type,
 tmb <- glmmTMB(total_abund ~ estuary*sample_period*reef_type + (1|site) + (1|time),
                family = nbinom2, 
                data = folpp_clean)
+
+
+########################################################################
+### Examine overal effects with Anovas for each model
+########################################################################
+an_mass <- Anova(mass, type = "II")
+an_tmb <- Anova(tmb, type = "II") 
+
 ```
 
 ### Methods
@@ -70,9 +78,9 @@ Folpp et al. 2020 notes that three artificial reef sites in each estuary were no
 
 #### ***Model Estimation***
 
-To examine the effect of artificial reef deployment on total fish abundance, a negative binomial generalized linear model was used with a log link to account for overdispersion. The model includes the indiviual and interactive effects between the estuary (Botany Bay, Lake Macquarie, St. Georges Basin), sampling period (before, one year post-deployment, two years post-deployment), and reef type (artificial reef or natural control reef):
+To examine the effect of artificial reef deployment on total fish abundance, a negative binomial generalized linear model was used with a log link to account for overdispersion. The model includes the indiviual and interactive effects between the estuary (Botany Bay, Lake Macquarie, St. Georges Basin), sampling period (before, one year post-deployment, two years post-deployment), and reef type (artificial reef or natural control reef).
 
-**Model with fixed effects only:**
+**Model A. Fixed Effects Only**
 
 $$
 \begin{array}{lcl}
@@ -82,9 +90,9 @@ log(\text{Total Abundance}) & = \; \beta_0 + \beta_1\text{Reef Type} +\beta_2\te
 \end{array}
 $$ 
 
-The model was fit using `R` (v3.6.3) and `RStudio` (v1.2.5033) with the `MASS` pacakge. This model is different from the one used in Folpp et al. 2020, which also included the date of sampling and individual site as random effects (using `glmmTMB` package):
+The model was fit using `R` (v3.6.3) and `RStudio` (v1.2.5033) with the `MASS` pacakge. This model is different from the one used in Folpp et al. 2020, which also included the date of sampling and individual site as random effects (using `glmmTMB` package).
 
-**Model with fixed effects and random effects**
+**Model B. Fixed Effects and Random Effects**
 
 $$
 \begin{array}{lcl}
@@ -94,9 +102,9 @@ log(\text{Total Abundance}) & = \; \beta_0 + \beta_1\text{Reef Type} +\beta_2\te
 \end{array}
 $$ 
 
-Above, \alpha coefficients refer to random effects, and \beta coefficients indicate fixed effects.
-For both models, overall interaction effects were tested with Type II ANOVAs (`car` package) and pairwise differences were compared using the `emmeans` package. 
+For Model 2, $\alpha$ coefficients refer to random effects, and $\beta$ coefficients indicate fixed effects. For both models, overall interaction effects were tested with Type II ANOVAs (`car` package) and pairwise differences were compared using the `emmeans` package. 
 
+***
 
 ### Results
 
@@ -144,10 +152,17 @@ ggplot(data = raw_means_df) +
 
 The main hypothesis was that if artificial reefs were supporting enhanced fish production rather than attracting fish from nearby natural reefs, the abundances of fish on artificial reefs should increase and the abundances of fish on natural reefs should not decrease. 
 
-Pairwise differences from both models indicate support for this hypothesis, showing an increase in total abundance on artifical reefs after the reefs were deployed, and no statistically significant changes in total abundances at the natural reefs in all three estuaries (Table 1).  However, the estimated mean total abundance on natural reefs showed a slight decrease in Botany Bay from before the artificial reefs were constructed to one year post-deployment when accounting for random effects of sampling time and site (Table 1, Figure 2). 
+Pairwise differences from both models indicate support for this hypothesis, showing an increase in total abundance on artifical reefs after the reefs were deployed, and no statistically significant changes in total abundances at the natural reefs in all three estuaries (Table 1, Appendix - Table 2). There were also no significant changes in the mean total abundances on artificial reefs between one year post-deployment and two years post-deployment (Appendix - Table 2). This trend is also reflected in the descriptive mean total abundance (Figure 1). However, the estimated marginal mean total abundance on natural reefs showed a slight decrease in Botany Bay from before the artificial reefs were constructed to one year post-deployment when accounting for random effects of sampling time and site (Table 1, Appendix - Figure 2).
 
+#### ***Detailed Interpretation***
 
-This trend is also reflected in the descriptive mean total abundance (Figure 1). 
+The models yield similar results for most individual and interactive effects (Appendix - Table 2). Results described here refer to the "Fixed Effects Only" model unless otherwise stated.
+
+Both models indicated significant differences in the  mean total abundance among the three estuaries ($\chi^2 = 81.2$, $df = 2$, $p < 0.001$), and across the different sampling periods ($\chi^2 = 76.4$, $df = 2$, $p < 0.001$). Artificial reef sites before deployment in Botany Bay had mean total abundances 3.57 times higher than those of Lake Macquarie, and 11.1 times higher than those in St. Georges Basin (Appendix - Table 1). Similarly, mean total abundances on Botany Bay artificial reefs were 7.29 times higher on average at one year post-deployment compared to the Botany Bay artificial reefs before the artificial reefs were deployed, and 9.43 times higher on average at two years post-deployment compared to the Botany Bay artificial reefs before the artificial reefs were deployed (Appendix - Table 1). 
+
+There were also signficant differences in the patterns of mean total abundance across time for the different reef types ($\chi^2 = 89.0$, $df = 2$, $p < 0.001$). This this pattern was not significantly different among the different estuaries ($\chi^2 = 5.78$, $df = 4$, $p = 0.216$). Before artificial reef deployment, mean total abundances on Botany Bay artificial reefs were 8.70 times *smaller* on average than Botany Bay natural reefs. However, mean total abundances on artifical reefs were 6.25 times greater after one year and 6.67 times greater after two years on average compared to natural reefs over the same timeframes in Botany Bay alone.
+
+There was a difference in mean total abundances for the different reef types when only considering the fixed effects ($\chi^2 = 6.08$, $df = 1$, $p = 0.014$), but this effect was not significant when accounting for the random effects of sampling date and site ($\chi^2 = 0.602$, $df = 1$, $p = 0.438$). Simiilary, the pattern in mean total abundance at the different reef types differed among the three estuaries when only considering fixed effects ($\chi^2 = 10.32$, $df = 2$, $p = 0.0057$), but this effect was not significant when accounting for random effects of sampling date and site ($\chi^2 = 5.23$, $df = 2$, $p = 0.073$). 
 
 
 ```{r echo=FALSE}
@@ -202,33 +217,60 @@ kable(means_comparison,
 
 ```
 
+***
 
 ### Discussion
 
+There are some concerns that could lead to bias or inconsistency in these results. 
 
-Discuss the validity of these findings. Identify any concerns that could lead to bias or inconsistency in the results. These could arise from how the data are collected, how the model is specified, and/or how the research is designed. In terms of inference, can you ascribe a causal relationship from these findings? Why, or why not?
+There is some heteroskedasticity in the residuals for the model. The residuals vs. fitted plot shows greater variance at higher predicted values compared to lower predicted values. This is not particularly surprising given that there are fewer lower fitted values. However, it likely leads to higher variance in the model estimates, and could also influence whether or not certain effects are determined to be statistically significant. Using a negative binomial distribution does seem appropriate given the distribution and overdispersion in the dependent variable (total abundance). However, it is possible that there is also an omitted variable that is driving changes in abundance. The authors do not spend any time addressing the model or assumptions in the paper, aside from noting that the assumptions were checked using the `DHARMA` package. This was moderately concerning to me, as it seems like a more responsible practice to at least include information about the model in the Supplementary Material. 
 
+The research design also draws some concerns. Experiments create exogeneity through randomization, but the researchers did not randomly assign the reef type. Though it is not discussed in the article, the researchers note that there was uncertainty in the deployment locations for the artificial reefs, which would suggest that the reefs were not randomly placed. The article also does not describe whether the natural control reefs were randomly selected, or if another method was used to determine that they are representative of the natural reefs in the system. This means there could be selection bias in the sites that were chosen for inclusion in the study (for both the natural reefs and the constructed artificial reefs). There was also no control for the potential effect of installing the artificial reefs.
 
+Another concern is whether the sampling design can appropriately address the research question. The researchers were primarily interested in examining if adding artificial reef structure increases the carrying capacity of the system (leading to the production of more fish) or attracts fish from nearby natural reefs. The article describes a potential mechanism for how artificial reefs could enhance production: first, the artificial reefs would provide settlement habitat for post-larval juveniles, and the increased juvenile survival would then cascade through to the adult size classes. There are a few issues with this mechanism related to how the study was designed:
 
+1) For the artificial reefs to act as settlement habitat, they would have needed to be installed prior to the recruitment window for the given species and system, which the authors do not discuss in the article. The three estuaries were sampled on different seasonal schedules (ranging between September and February) so the timing of recruitment compared to the timing of both deployment and sampling would differ across estuaries and could influence the results. In addition, while the artificial reefs in Lake Macquarie and St Georges Basin were deployed one month after the before sampling period, the artificial reefs in Botany Bay were not deployed until several months later. This means that the Botany Bay reefs “after one year” were actually only installed for 6 months, and “after two years” was only 18 months (Folpp et al. 2020, Table 1). 
 
+2) Assuming the reefs *were* installed prior to recruitment, those fish that recruited to the artificial reefs would be a maximum of one year old at the one year post-deployment sampling, and two years old at the two years post-deployment sampling (as they could not have recruited to the reef before the reef existed). The study only noted the size classes for fishes in the Sparidae family (e.g. not all of the species included in ‘total abundance’). There are also discrepancies in the published article for how the size classes were binned;  at one point they note that the "small" size class was less than 20cm total length, but later discuss that the “small” size class included any fish below its legal limit, which ranges from 20-30cm total length for the three Sparid species examined. Regardless, size-at-age curves have indicated that many Sparids may take upwards of 5 years to reach 20-30cm total length (FishBase, Paul & Tarring 1980). This would suggest that many of the "juveniles" that the authors are indicating as potentially produced by the artificial reefs were actually attracted from nearby natural habitats, and all of the adult fish were attracted from nearby natural habitats. 
 
+3) The reefs almost certainly attracted many fish from nearby natural reefs, but there were no observed decreases in abundance on the natural control reefs. This suggests that either a) there were enough other nearby reefs that the fish could have been attracted from - which may have shown decreases but were not measured - and/or b) the sampling methods are not providing an accurate measure of the abundance of fish in the system. 
+
+4) The authors do not discuss the placement of the sites in relation to each other, and how the distance between sites compares to the estimated dispersal distances and home ranges of each species. The research question acknowledges that the artificial reefs could be attracting fish from nearby natural reefs, yet the authors do not address the movement of individuals between sites. If the distance between sites is smaller than the home range of the species, an individual could reasonably move between sites on a regular basis. Since the sites were often sampled on different days, this would then indicate potential for the same individuals to be counted multiple times at different sites. In this case, the measured increase in total abundance at the artificial reefs would not be reflecting an increase in the total abundance for the system. The article notes that the three Sparidae species are known to have high site fidelity, however an acoustic telemetry study by the same authors in Lake Macquarie on one of the Sparidae species (Acanthopagrus australis) showed that individuals often moved among the artificial reef sites, and also between the artificial reef and natural reef sites. The study also had seven fish which were detected in a different array over 250km away (Lowry et al. 2017). This indicates that the individual replicates for this study were likely not independent. 
+
+#### Experiment Improvements
+
+Experimental studies are often limited by a wide range of resource constraints (of which time is often at the top of the list). However, there are several ways that this study could be improved, especially given ample time and resources:
+
+* Using a randomized block design could help to remove the selection bias in the selection of the natural control reefs and placement of artificial reefs, however in this study the "treatment" is the deployment of the artificial reefs and the research question seems more concerned with the abundance of fish in the *overall system* rather than on a site-by-site basis. If the study needed to keep the same general design (with comparing artificial reefs to natural reefs within the same system) there is a strong confounder where the "treatment" is only applied to one "group" (bare sand habitat) which is substantially different from the other "group" (natural reef habitat). One potential improvement would be to add controls for both groups - bare sand habitats which do not get additional artificial reef structures, and natural reef habitats which *do* get additional artificial reef structures.
+
+* Establish a baseline trend in abundance at all sites before manipulation to better understand seasonal and interannual variation. The current study only examines the system for three years, which makes it difficult to ascribe a causal relationship between the addition of artificial reefs and the observed increase in abundance. It's reasonable that there could be other factors driving the increase in abundance, including environmental changes, increased recruitment, or continued recovery of the populations given that the areas had only recently (within 1-3 years) been closed to fishing. If the study could establish the patterns in abundance at each site prior to manipulation, they could more reasonably argue that the increase in abundance was caused by the artificial reefs. This could also inform how many sampling intervals would be most appropriate to capture the seasonal changes in the system.  
+
+* Improve the timing and structure of BRUV surveys, and incorporate additional sampling methods. To ensure that BRUVs are not counting individual fish multiple times at different sites, all sites within the same system should be sampled simultaneously. This would require a large quantity of BRUV systems, however they could be deployed individually and then only quantified for the same time interval. While BRUV surveys have the benefit of minimal interference with the system (particularly that no individuals are removed or removed-and-replaced) and are easy to deploy, they offer a limited perspective. Some issues include: a) the baits will only attract certain species, b) estimates can be affected by water clarity or obstructed by individuals closer to the camera, c) only larger size classes can be quantified. In addition to using the BRUVs, sampling the sites using dual-frequency identification sonar (DIDSON) could potentially provide a better estimate of the total abundance of fish at each site (Crossman et al. 2011), as the sonar "videos" show signatures for all individuals within a much larger potential range (reasonably upwards of 10-20m depending on balance between range and resolution). Sampling using smaller nets (e.g. fyke nets) or bottom traps could also improve the measurements of the juveniles at the sites and would also extend the study to include invertebrates. Settlement at the sites could also be measured directly using SMURFs (standardized monitoring unit for the recruitment of fishes), which are flexible cages with small mesh inserts that can collect post-larval settlers. 
+
+***
 
 ### References
 
+Crossman, J.A., Martel, G., Johnson, P.N. and Bray, K. (2011), The use of Dual‐frequency IDentification SONar (DIDSON) to document white sturgeon activity in the Columbia River, Canada. Journal of Applied Ichthyology, 27: 53-57. https://doi.org/10.1111/j.1439-0426.2011.01832.x
+
 Folpp, H.R., Schilling, H.T., Clark, G.F., Lowry, M.B., Maslen, B., Gregson, M., Suthers, I.M., 2020. Artificial reefs increase fish abundance in habitat-limited estuaries. Journal of Applied Ecology 57, 1752–1761. https://doi.org/10.1111/1365-2664.13666
 
+Paul, L.J. & Tarring, S.C. 1980. Growth rate and population structure of snapper, Chrysophrys auratus, in the East Cape region, New Zealand, New Zealand Journal of Marine and Freshwater Research, 14:3, 237-247. https://doi.org/10.1080/00288330.1980.9515866
+
+***
 
 ### Appendix
 
 #### Table 1. Regression Results
+
 ```{r table 2 regression results, echo=FALSE}
 ##################################################
 ### Output Appendix Table 1: Regression Results 
 ###################################################
 tab_model(mass, tmb,
-          show.ci = FALSE,
-          digits = 3, 
-          dv.labels = c("Total Abundance (Fixed Effects Only)", "Total Abundance (with Random Effects)"),
+          digits = 2, 
+          collapse.ci = T,
+          dv.labels = c("Total Abundance \n (Fixed Effects Only)", "Total Abundance \n (Including Random Effects)"),
           wrap.labels = 75,
           p.style = "numeric_stars",
           show.aic = TRUE,
@@ -238,37 +280,26 @@ tab_model(mass, tmb,
 ```
 
 
-Coefficient Interpretation: These results indicate that holding all other included variables constant, an artificial reef had 1.848 more fish after one year and 1.879 more fish after two years on average compared to a natural reef over the same timeframes in Botany Bay alone. These results are statistically significant (p < 0.01). 
 
-
+***
+ 
 #### **Table 2.** ANOVA Results
+ 
 
 ```{r echo=FALSE}
 ##################################################
-### Anova to compare overall interaction effects for both models
+### Anova Tables to compare overall interaction effects for both models
 ###################################################
-an_mass <- Anova(mass, type = "II")
-an_tmb <- Anova(tmb, type = "II") 
-
-
-kbl(an_mass, 
-    format = "html", 
-    digits = 3,
-    caption = "ANOVA Results (Fixed Effects Only)") %>% 
-  kable_styling("hover",
-                full_width = F, 
-                position = "float_left")
-
+kable(an_mass, 
+    caption = "<strong>A. Fixed Effects Only</strong>") %>% 
+  kable_classic("hover",full_width = F)
 kable(an_tmb, 
-      digits = 3, 
-      caption = "ANOVA Results (Fixed + Random Effects)") %>% 
-  kable_styling("hover",
-                full_width = F,
-                position = "left")
+      caption = "<strong>B. Fixed + Random Effects</strong>") %>% 
+  kable_classic("hover", full_width = F)
 
 ```
 
-
+***
 
 
 ```{r echo=FALSE}
